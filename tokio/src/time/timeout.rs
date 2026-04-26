@@ -6,7 +6,7 @@
 
 use crate::{
     task::coop,
-    time::{error::Elapsed, sleep_until, Duration, Instant, Sleep},
+    time::{error::Elapsed, Duration, Instant, Sleep},
     util::trace,
 };
 
@@ -142,11 +142,31 @@ where
 /// }
 /// # }
 /// ```
+///
+/// # Panics
+///
+/// This function panics if there is no current timer set.
+///
+/// It can be triggered when [`Builder::enable_time`] or
+/// [`Builder::enable_all`] are not included in the builder.
+///
+/// It can also panic whenever a timer is created outside of a
+/// Tokio runtime. That is why `rt.block_on(sleep(...))` will panic,
+/// since the function is executed outside of the runtime.
+/// Whereas `rt.block_on(async {sleep(...).await})` doesn't panic.
+/// And this is because wrapping the function on an async makes it lazy,
+/// and so gets executed inside the runtime successfully without
+/// panicking.
+///
+/// [`Builder::enable_time`]: crate::runtime::Builder::enable_time
+/// [`Builder::enable_all`]: crate::runtime::Builder::enable_all
+#[track_caller]
 pub fn timeout_at<F>(deadline: Instant, future: F) -> Timeout<F::IntoFuture>
 where
     F: IntoFuture,
 {
-    let delay = sleep_until(deadline);
+    let location = trace::caller_location();
+    let delay = Sleep::new_timeout(deadline, location);
 
     Timeout {
         value: future.into_future(),
